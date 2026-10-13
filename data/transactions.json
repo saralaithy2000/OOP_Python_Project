@@ -1,0 +1,7 @@
+[
+  {"id": 1, "type": "income",  "amount": 8000.0, "date": "2026-10-01", "category": "Salary",        "note": "October salary",   "source": "WE"},
+  {"id": 2, "type": "expense", "amount": 1500.0, "date": "2026-10-02", "category": "Rent",          "note": "Monthly rent",     "payment_method": "transfer"},
+  {"id": 3, "type": "expense", "amount": 320.5,  "date": "2026-10-04", "category": "Food",          "note": "Groceries",        "payment_method": "card"},
+  {"id": 4, "type": "expense", "amount": 90.0,   "date": "2026-10-06", "category": "Transport",     "note": "Fuel",             "payment_method": "cash"},
+  {"id": 5, "type": "income",  "amount": 600.0,  "date": "2026-10-08", "category": "Freelance",     "note": "Side project",     "source": "Client"}
+]
