@@ -16,6 +16,10 @@ class Income(Transaction):
     def source(self) -> str:
         return self._source
 
+    @source.setter
+    def source(self, value: str) -> None:
+        self._source = str(value).strip()
+
     def signed_amount(self) -> float:
         return self.amount  # money in: positive
 

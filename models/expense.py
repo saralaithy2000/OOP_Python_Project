@@ -16,6 +16,10 @@ class Expense(Transaction):
     def payment_method(self) -> str:
         return self._payment_method
 
+    @payment_method.setter
+    def payment_method(self, value: str) -> None:
+        self._payment_method = str(value).strip() or "cash"
+
     def signed_amount(self) -> float:
         return -self.amount  # money out: negative
 
