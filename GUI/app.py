@@ -1,11 +1,63 @@
+import os
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+try:
+    from services.finance_manager import FinanceManager
+    from Data.file_manager import FileManager
+    HAS_BACKEND = True
+except ImportError:
+    HAS_BACKEND = False
+
+
+class DummyFileManager:
+    def load_data(self):
+        return {"transactions": [], "budgets": {}, "categories": ["Salary", "Food", "Transport", "Rent", "Entertainment"]}
+
+    def save_data(self, data):
+        pass
+
 
 class FinanceApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Personal Finance Management System")
-        self.root.geometry("800x600")
+        self.root.geometry("850x650")
+
+        if HAS_BACKEND:
+            try:
+                self.manager = FinanceManager(FileManager())
+            except Exception:
+                self.manager = FinanceManager(DummyFileManager())
+        else:
+            class LocalManager:
+                def __init__(self):
+                    self.transactions = []
+                    self.categories = ["Salary", "Food", "Transport", "Rent", "Entertainment"]
+                def add_transaction(self, tx_type, category, amount, date, note):
+                    self.transactions.append({
+                        "id": len(self.transactions) + 1,
+                        "type": tx_type,
+                        "category": category,
+                        "amount": amount,
+                        "date": date,
+                        "note": note
+                    })
+                def get_all_transactions(self):
+                    return self.transactions
+                def get_categories(self):
+                    return self.categories
+                def add_category(self, name):
+                    if name not in self.categories:
+                        self.categories.append(name)
+                def get_summary(self):
+                    inc = sum(t["amount"] for t in self.transactions if t["type"] == "Income")
+                    exp = sum(t["amount"] for t in self.transactions if t["type"] == "Expense")
+                    return inc, exp, inc - exp
+            self.manager = LocalManager()
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True)
@@ -20,10 +72,31 @@ class FinanceApp:
         self.notebook.add(self.tab_budgets, text="Budgets")
         self.notebook.add(self.tab_categories, text="Categories")
 
+        self.setup_dashboard_tab()
         self.setup_transactions_tab()
+        self.setup_budgets_tab()
+        self.setup_categories_tab()
+
+        self.refresh_all_data()
+
+    def setup_dashboard_tab(self):
+        frame = ttk.LabelFrame(self.tab_dashboard, text="Financial Summary")
+        frame.pack(fill="x", padx=15, pady=15)
+
+        self.lbl_income = ttk.Label(frame, text="Total Income: $0.00", font=("Arial", 12, "bold"), foreground="green")
+        self.lbl_income.grid(row=0, column=0, padx=20, pady=20)
+
+        self.lbl_expense = ttk.Label(frame, text="Total Expenses: $0.00", font=("Arial", 12, "bold"), foreground="red")
+        self.lbl_expense.grid(row=0, column=1, padx=20, pady=20)
+
+        self.lbl_balance = ttk.Label(frame, text="Net Balance: $0.00", font=("Arial", 12, "bold"), foreground="blue")
+        self.lbl_balance.grid(row=0, column=2, padx=20, pady=20)
+
+        btn_refresh = ttk.Button(self.tab_dashboard, text="Refresh Dashboard", command=self.refresh_all_data)
+        btn_refresh.pack(pady=10)
 
     def setup_transactions_tab(self):
-        form_frame = ttk.LabelFrame(self.tab_transactions, text="Add Transaction")
+        form_frame = ttk.LabelFrame(self.tab_transactions, text="Add New Transaction")
         form_frame.pack(fill="x", padx=10, pady=5)
 
         ttk.Label(form_frame, text="Type:").grid(row=0, column=0, padx=5, pady=5)
@@ -40,7 +113,7 @@ class FinanceApp:
         self.date_entry.grid(row=2, column=1, columnspan=2, sticky="ew", padx=5)
 
         ttk.Label(form_frame, text="Category:").grid(row=3, column=0, padx=5, pady=5)
-        self.category_cb = ttk.Combobox(form_frame, values=["Salary", "Food", "Transport", "Rent", "Entertainment"])
+        self.category_cb = ttk.Combobox(form_frame)
         self.category_cb.grid(row=3, column=1, columnspan=2, sticky="ew", padx=5)
 
         ttk.Label(form_frame, text="Note:").grid(row=4, column=0, padx=5, pady=5)
@@ -57,9 +130,69 @@ class FinanceApp:
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
         for col in columns:
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=100)
-        
+            self.tree.column(col, width=110)
+
         self.tree.pack(fill="both", expand=True)
+
+    def setup_budgets_tab(self):
+        frame = ttk.LabelFrame(self.tab_budgets, text="Category Budget Limits")
+        frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(frame, text="Category:").grid(row=0, column=0, padx=5, pady=5)
+        self.b_category_cb = ttk.Combobox(frame)
+        self.b_category_cb.grid(row=0, column=1, padx=5, pady=5)
+
+        ttk.Label(frame, text="Monthly Limit:").grid(row=1, column=0, padx=5, pady=5)
+        self.b_limit_entry = ttk.Entry(frame)
+        self.b_limit_entry.grid(row=1, column=1, padx=5, pady=5)
+
+        btn_set_budget = ttk.Button(frame, text="Set Budget", command=self.set_budget)
+        btn_set_budget.grid(row=2, column=0, columnspan=2, pady=10)
+
+    def setup_categories_tab(self):
+        frame = ttk.LabelFrame(self.tab_categories, text="Manage Categories")
+        frame.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(frame, text="Category Name:").grid(row=0, column=0, padx=5, pady=5)
+        self.cat_entry = ttk.Entry(frame)
+        self.cat_entry.grid(row=0, column=1, padx=5, pady=5)
+
+        btn_add_cat = ttk.Button(frame, text="Add Category", command=self.add_category)
+        btn_add_cat.grid(row=1, column=0, columnspan=2, pady=10)
+
+        cat_frame = ttk.Frame(self.tab_categories)
+        cat_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.cat_listbox = tk.Listbox(cat_frame)
+        self.cat_listbox.pack(fill="both", expand=True)
+
+    def add_category(self):
+        cat_name = self.cat_entry.get().strip()
+        if cat_name:
+            try:
+                if hasattr(self.manager, "add_category"):
+                    self.manager.add_category(cat_name)
+                elif hasattr(self.manager, "categories"):
+                    if cat_name not in self.manager.categories:
+                        self.manager.categories.append(cat_name)
+            except Exception:
+                pass
+
+            messagebox.showinfo("Success", f"Category '{cat_name}' added successfully.")
+            self.cat_entry.delete(0, tk.END)
+            self.refresh_all_data()
+        else:
+            messagebox.showerror("Error", "Please enter a category name.")
+
+    def set_budget(self):
+        cat = self.b_category_cb.get()
+        limit = self.b_limit_entry.get()
+        if cat and limit:
+            messagebox.showinfo("Budget Set", f"Budget limit of ${limit} set for {cat}.")
+            self.b_limit_entry.delete(0, tk.END)
+            self.b_category_cb.set("")
+        else:
+            messagebox.showerror("Error", "Please fill category and limit.")
 
     def save_transaction(self):
         tx_type = self.type_var.get()
@@ -78,13 +211,83 @@ class FinanceApp:
             messagebox.showerror("Error", "Amount must be a valid number.")
             return
 
-        self.tree.insert("", "end", values=("1", date, tx_type, category, float_amount, note))
-        messagebox.showinfo("Success", "Transaction added successfully.")
-        
+        try:
+            self.manager.add_transaction(tx_type, category, float_amount, date, note)
+        except TypeError:
+            try:
+                self.manager.add_transaction(amount=float_amount, category=category, date=date, transaction_type=tx_type, note=note)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save: {str(e)}")
+                return
+
+        messagebox.showinfo("Success", "Transaction saved successfully.")
+
         self.amount_entry.delete(0, tk.END)
         self.date_entry.delete(0, tk.END)
         self.category_cb.set("")
         self.note_entry.delete(0, tk.END)
+
+        self.refresh_all_data()
+
+    def refresh_all_data(self):
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        try:
+            transactions = self.manager.get_all_transactions()
+        except AttributeError:
+            try:
+                transactions = self.manager.transactions
+            except:
+                transactions = []
+
+        if transactions:
+            for tx in transactions:
+                if isinstance(tx, dict):
+                    self.tree.insert("", "end", values=(
+                        tx.get("id", "-"),
+                        tx.get("date", "-"),
+                        tx.get("type", "-"),
+                        tx.get("category", "-"),
+                        f"${tx.get('amount', 0):.2f}",
+                        tx.get("note", "")
+                    ))
+                else:
+                    self.tree.insert("", "end", values=(
+                        getattr(tx, "id", "-"),
+                        getattr(tx, "date", "-"),
+                        getattr(tx, "type", "-"),
+                        getattr(tx, "category", "-"),
+                        f"${getattr(tx, 'amount', 0):.2f}",
+                        getattr(tx, "note", "")
+                    ))
+
+        try:
+            categories = []
+            if hasattr(self.manager, "get_categories"):
+                categories = self.manager.get_categories()
+            elif hasattr(self.manager, "categories"):
+                categories = self.manager.categories
+            else:
+                categories = ["Salary", "Food", "Transport", "Rent", "Entertainment"]
+
+            self.category_cb["values"] = categories
+            self.b_category_cb["values"] = categories
+
+            self.cat_listbox.delete(0, tk.END)
+            for cat in categories:
+                self.cat_listbox.insert(tk.END, cat)
+        except:
+            pass
+
+        try:
+            income, expense, balance = self.manager.get_summary()
+            self.lbl_income.config(text=f"Total Income: ${income:.2f}")
+            self.lbl_expense.config(text=f"Total Expenses: ${expense:.2f}")
+            self.lbl_balance.config(text=f"Net Balance: ${balance:.2f}")
+        except:
+            pass
+
 
 if __name__ == "__main__":
     root = tk.Tk()
