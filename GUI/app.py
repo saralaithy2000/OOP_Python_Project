@@ -3,6 +3,11 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import matplotlib
+matplotlib.use("TkAgg")
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
@@ -25,7 +30,7 @@ class FinanceApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Personal Finance Management System")
-        self.root.geometry("850x650")
+        self.root.geometry("950x750")
 
         if HAS_BACKEND:
             try:
@@ -80,20 +85,30 @@ class FinanceApp:
         self.refresh_all_data()
 
     def setup_dashboard_tab(self):
-        frame = ttk.LabelFrame(self.tab_dashboard, text="Financial Summary")
-        frame.pack(fill="x", padx=15, pady=15)
+        summary_frame = ttk.LabelFrame(self.tab_dashboard, text="Financial Summary")
+        summary_frame.pack(fill="x", padx=15, pady=10)
 
-        self.lbl_income = ttk.Label(frame, text="Total Income: $0.00", font=("Arial", 12, "bold"), foreground="green")
-        self.lbl_income.grid(row=0, column=0, padx=20, pady=20)
+        self.lbl_income = ttk.Label(summary_frame, text="Total Income: $0.00", font=("Arial", 11, "bold"), foreground="green")
+        self.lbl_income.grid(row=0, column=0, padx=20, pady=10)
 
-        self.lbl_expense = ttk.Label(frame, text="Total Expenses: $0.00", font=("Arial", 12, "bold"), foreground="red")
-        self.lbl_expense.grid(row=0, column=1, padx=20, pady=20)
+        self.lbl_expense = ttk.Label(summary_frame, text="Total Expenses: $0.00", font=("Arial", 11, "bold"), foreground="red")
+        self.lbl_expense.grid(row=0, column=1, padx=20, pady=10)
 
-        self.lbl_balance = ttk.Label(frame, text="Net Balance: $0.00", font=("Arial", 12, "bold"), foreground="blue")
-        self.lbl_balance.grid(row=0, column=2, padx=20, pady=20)
+        self.lbl_balance = ttk.Label(summary_frame, text="Net Balance: $0.00", font=("Arial", 11, "bold"), foreground="blue")
+        self.lbl_balance.grid(row=0, column=2, padx=20, pady=10)
+
+        chart_frame = ttk.LabelFrame(self.tab_dashboard, text="Visual Analytics")
+        chart_frame.pack(fill="both", expand=True, padx=15, pady=10)
+
+        self.figure = Figure(figsize=(8, 4.5), dpi=100)
+        self.ax1 = self.figure.add_subplot(121)
+        self.ax2 = self.figure.add_subplot(122)
+
+        self.canvas = FigureCanvasTkAgg(self.figure, master=chart_frame)
+        self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
         btn_refresh = ttk.Button(self.tab_dashboard, text="Refresh Dashboard", command=self.refresh_all_data)
-        btn_refresh.pack(pady=10)
+        btn_refresh.pack(pady=5)
 
     def setup_transactions_tab(self):
         form_frame = ttk.LabelFrame(self.tab_transactions, text="Add New Transaction")
@@ -246,7 +261,7 @@ class FinanceApp:
                 if isinstance(tx, dict):
                     self.tree.insert("", "end", values=(
                         tx.get("id", "-"),
-                        tx.get("date", "-"),
+                    tx.get("date", "-"),
                         tx.get("type", "-"),
                         tx.get("category", "-"),
                         f"${tx.get('amount', 0):.2f}",
@@ -285,7 +300,34 @@ class FinanceApp:
             self.lbl_income.config(text=f"Total Income: ${income:.2f}")
             self.lbl_expense.config(text=f"Total Expenses: ${expense:.2f}")
             self.lbl_balance.config(text=f"Net Balance: ${balance:.2f}")
-        except:
+
+            self.ax1.clear()
+            self.ax2.clear()
+
+            # Pie Chart (Expenses by Category)
+            expense_categories = {}
+            for tx in transactions:
+                t_type = tx.get("type") if isinstance(tx, dict) else getattr(tx, "type", "")
+                t_cat = tx.get("category") if isinstance(tx, dict) else getattr(tx, "category", "")
+                t_amt = tx.get("amount") if isinstance(tx, dict) else getattr(tx, "amount", 0)
+                if t_type == "Expense":
+                    expense_categories[t_cat] = expense_categories.get(t_cat, 0) + float(t_amt)
+
+            if expense_categories:
+                self.ax1.pie(expense_categories.values(), labels=expense_categories.keys(), autopct='%1.1f%%', startangle=140)
+                self.ax1.set_title("Expenses by Category")
+            else:
+                self.ax1.text(0.5, 0.5, "No Expense Data", horizontalalignment='center', verticalalignment='center')
+                self.ax1.set_title("Expenses by Category")
+
+            # Bar Chart (Income vs Expenses)
+            self.ax2.bar(["Income", "Expense"], [income, expense], color=["green", "red"])
+            self.ax2.set_title("Income vs Expenses")
+            self.ax2.set_ylabel("Amount ($)")
+
+            self.figure.tight_layout()
+            self.canvas.draw()
+        except Exception:
             pass
 
 
