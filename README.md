@@ -1,9 +1,9 @@
-# Personal Finance Management System - Student B Documentation
+# Personal Finance Management System - Student B Sara Laithy
 
 ## Overview
 This document outlines the specific tasks, responsibilities, and deliverables assigned to **Student B** for the Personal Finance Management System project. The project follows a modular object-oriented programming (OOP) structure in Python, utilizing `tkinter` for the graphical user interface and backend services for data management.
 
-## Student B Responsibilities & Tasks
+## Student B Sara Laithy Responsibilities & Tasks
 - **GUI Development (`GUI/app.py`):**
   - Designed and structured the desktop application using `tkinter` and `ttk`.
   - Implemented multi-tab navigation (`Notebook`) containing Dashboard, Transactions, Budgets, and Categories tabs.
