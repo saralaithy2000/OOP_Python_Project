@@ -10,6 +10,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 #Hi
+print("Hi")
 try:
     from services.finance_manager import FinanceManager
     from Data.file_manager import FileManager
