@@ -1,69 +1,139 @@
 import os
 import sys
+import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
-
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-#Hi
-print("Hi")
+
 try:
+    from exceptions import FinanceError
     from services.finance_manager import FinanceManager
-    from Data.file_manager import FileManager
+    from file_manager.file_manager import FileManager
     HAS_BACKEND = True
 except ImportError:
     HAS_BACKEND = False
-
-
-class DummyFileManager:
-    def load_data(self):
-        return {"transactions": [], "budgets": {}, "categories": ["Salary", "Food", "Transport", "Rent", "Entertainment"]}
-
-    def save_data(self, data):
+    class FinanceError(Exception):
         pass
+
+class DummyCategory:
+    def __init__(self, name):
+        self.name = name
+
+class DummyTransaction:
+    def __init__(self, id, date, tx_type, category, amount, note):
+        self.id = id
+        self.date = date
+        self.type = tx_type
+        self.category = category
+        self.amount = float(amount)
+        self.note = note
+    def label(self):
+        return self.type
+
+class StandaloneManager:
+    def __init__(self):
+        self.transactions = [
+            DummyTransaction(1, "2026-10-01", "Income", "Salary", 5000.0, "Monthly Salary"),
+            DummyTransaction(2, "2026-10-02", "Expense", "Food", 150.0, "Groceries")
+        ]
+        self.categories = [DummyCategory("Salary"), DummyCategory("Food"), DummyCategory("Transport"), DummyCategory("Rent"), DummyCategory("Entertainment")]
+        self.budgets = {}
+
+    def get_transactions(self):
+        return self.transactions
+
+    def get_categories(self):
+        return self.categories
+
+    def dashboard_data(self):
+        inc = sum(t.amount for t in self.transactions if t.label() == "Income")
+        exp = sum(t.amount for t in self.transactions if t.label() == "Expense")
+        return {
+            "total_income": inc,
+            "total_expenses": exp,
+            "balance": inc - exp
+        }
+
+    def add_transaction(self, tx_type, amount, date, category, note):
+        try:
+            amt = float(amount)
+            if amt <= 0:
+                raise FinanceError("Amount must be greater than zero.")
+        except ValueError:
+            raise FinanceError("Amount must be a valid number.")
+        
+        new_id = len(self.transactions) + 1
+        tx = DummyTransaction(new_id, date, tx_type, category, amt, note)
+        self.transactions.append(tx)
+        return tx
+
+    def add_category(self, name):
+        if not name:
+            raise FinanceError("Category name cannot be empty.")
+        if any(c.name.lower() == name.lower() for c in self.categories):
+            raise FinanceError(f"Category '{name}' already exists.")
+        self.categories.append(DummyCategory(name))
+
+    def add_budget(self, category, limit, month):
+        try:
+            lim = float(limit)
+            if lim < 0:
+                raise FinanceError("Limit cannot be negative.")
+        except ValueError:
+            raise FinanceError("Limit must be a valid number.")
+        self.budgets[(category, month)] = lim
+
+    def budget_status(self, month):
+        statuses = []
+        for cat in self.categories:
+            lim = self.budgets.get((cat.name, month), 0.0)
+            spent = sum(t.amount for t in self.transactions if t.category == cat.name and t.label() == "Expense")
+            statuses.append({
+                "category": cat.name,
+                "limit": lim,
+                "spent": spent,
+                "remaining": lim - spent,
+                "exceeded": spent > lim if lim > 0 else False
+            })
+        return statuses
+
+    def search(self, text):
+        text = text.lower()
+        return [t for t in self.transactions if text in t.note.lower() or text in t.category.lower()]
+
+    def filter(self, category=None, tx_type=None):
+        res = self.transactions
+        if category and category != "All":
+            res = [t for t in res if t.category == category]
+        if tx_type and tx_type != "All":
+            res = [t for t in res if t.label() == tx_type]
+        return res
+
+    def delete_transaction(self, tx_id):
+        self.transactions = [t for t in self.transactions if t.id != tx_id]
 
 
 class FinanceApp:
-    def __init__(self, root):
+    def __init__(self, root: tk.Tk, manager=None) -> None:
         self.root = root
+        if manager is not None:
+            self.manager = manager
+        else:
+            if HAS_BACKEND:
+                try:
+                    self.manager = FinanceManager(FileManager())
+                except Exception:
+                    self.manager = StandaloneManager()
+            else:
+                self.manager = StandaloneManager()
+
         self.root.title("Personal Finance Management System")
         self.root.geometry("950x750")
-
-        if HAS_BACKEND:
-            try:
-                self.manager = FinanceManager(FileManager())
-            except Exception:
-                self.manager = FinanceManager(DummyFileManager())
-        else:
-            class LocalManager:
-                def __init__(self):
-                    self.transactions = []
-                    self.categories = ["Salary", "Food", "Transport", "Rent", "Entertainment"]
-                def add_transaction(self, tx_type, category, amount, date, note):
-                    self.transactions.append({
-                        "id": len(self.transactions) + 1,
-                        "type": tx_type,
-                        "category": category,
-                        "amount": amount,
-                        "date": date,
-                        "note": note
-                    })
-                def get_all_transactions(self):
-                    return self.transactions
-                def get_categories(self):
-                    return self.categories
-                def add_category(self, name):
-                    if name not in self.categories:
-                        self.categories.append(name)
-                def get_summary(self):
-                    inc = sum(t["amount"] for t in self.transactions if t["type"] == "Income")
-                    exp = sum(t["amount"] for t in self.transactions if t["type"] == "Expense")
-                    return inc, exp, inc - exp
-            self.manager = LocalManager()
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True)
@@ -85,7 +155,7 @@ class FinanceApp:
 
         self.refresh_all_data()
 
-    def setup_dashboard_tab(self):
+    def setup_dashboard_tab(self) -> None:
         summary_frame = ttk.LabelFrame(self.tab_dashboard, text="Financial Summary")
         summary_frame.pack(fill="x", padx=15, pady=10)
 
@@ -111,7 +181,7 @@ class FinanceApp:
         btn_refresh = ttk.Button(self.tab_dashboard, text="Refresh Dashboard", command=self.refresh_all_data)
         btn_refresh.pack(pady=5)
 
-    def setup_transactions_tab(self):
+    def setup_transactions_tab(self) -> None:
         form_frame = ttk.LabelFrame(self.tab_transactions, text="Add New Transaction")
         form_frame.pack(fill="x", padx=10, pady=5)
 
@@ -126,10 +196,11 @@ class FinanceApp:
 
         ttk.Label(form_frame, text="Date (YYYY-MM-DD):").grid(row=2, column=0, padx=5, pady=5)
         self.date_entry = ttk.Entry(form_frame)
+        self.date_entry.insert(0, datetime.date.today().isoformat())
         self.date_entry.grid(row=2, column=1, columnspan=2, sticky="ew", padx=5)
 
         ttk.Label(form_frame, text="Category:").grid(row=3, column=0, padx=5, pady=5)
-        self.category_cb = ttk.Combobox(form_frame)
+        self.category_cb = ttk.Combobox(form_frame, state="readonly")
         self.category_cb.grid(row=3, column=1, columnspan=2, sticky="ew", padx=5)
 
         ttk.Label(form_frame, text="Note:").grid(row=4, column=0, padx=5, pady=5)
@@ -138,6 +209,23 @@ class FinanceApp:
 
         btn_save = ttk.Button(form_frame, text="Save Transaction", command=self.save_transaction)
         btn_save.grid(row=5, column=0, columnspan=3, pady=10)
+
+        bar = ttk.Frame(self.tab_transactions)
+        bar.pack(fill="x", padx=10, pady=2)
+        ttk.Label(bar, text="Search:").pack(side="left")
+        self.search_entry = ttk.Entry(bar, width=18)
+        self.search_entry.pack(side="left", padx=4)
+        ttk.Label(bar, text="Type:").pack(side="left")
+        self.filter_type = ttk.Combobox(bar, values=["All", "Income", "Expense"], state="readonly", width=9)
+        self.filter_type.set("All")
+        self.filter_type.pack(side="left", padx=4)
+        ttk.Label(bar, text="Category:").pack(side="left")
+        self.filter_cat = ttk.Combobox(bar, values=["All"], state="readonly", width=14)
+        self.filter_cat.set("All")
+        self.filter_cat.pack(side="left", padx=4)
+        ttk.Button(bar, text="Apply", command=self.apply_filters).pack(side="left", padx=2)
+        ttk.Button(bar, text="Clear", command=self.clear_filters).pack(side="left", padx=2)
+        ttk.Button(bar, text="Delete Selected", command=self.delete_selected).pack(side="right")
 
         tree_frame = ttk.Frame(self.tab_transactions)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -150,12 +238,12 @@ class FinanceApp:
 
         self.tree.pack(fill="both", expand=True)
 
-    def setup_budgets_tab(self):
+    def setup_budgets_tab(self) -> None:
         frame = ttk.LabelFrame(self.tab_budgets, text="Category Budget Limits")
         frame.pack(fill="x", padx=10, pady=10)
 
         ttk.Label(frame, text="Category:").grid(row=0, column=0, padx=5, pady=5)
-        self.b_category_cb = ttk.Combobox(frame)
+        self.b_category_cb = ttk.Combobox(frame, state="readonly")
         self.b_category_cb.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(frame, text="Monthly Limit:").grid(row=1, column=0, padx=5, pady=5)
@@ -165,7 +253,18 @@ class FinanceApp:
         btn_set_budget = ttk.Button(frame, text="Set Budget", command=self.set_budget)
         btn_set_budget.grid(row=2, column=0, columnspan=2, pady=10)
 
-    def setup_categories_tab(self):
+        budget_frame = ttk.Frame(self.tab_budgets)
+        budget_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        b_columns = ("Category", "Limit", "Spent", "Remaining", "Status")
+        self.budget_tree = ttk.Treeview(budget_frame, columns=b_columns, show="headings")
+        for col in b_columns:
+            self.budget_tree.heading(col, text=col)
+            self.budget_tree.column(col, width=110)
+        self.budget_tree.tag_configure("over", foreground="red")
+        self.budget_tree.pack(fill="both", expand=True)
+
+    def setup_categories_tab(self) -> None:
         frame = ttk.LabelFrame(self.tab_categories, text="Manage Categories")
         frame.pack(fill="x", padx=10, pady=10)
 
@@ -182,154 +281,139 @@ class FinanceApp:
         self.cat_listbox = tk.Listbox(cat_frame)
         self.cat_listbox.pack(fill="both", expand=True)
 
-    def add_category(self):
-        cat_name = self.cat_entry.get().strip()
-        if cat_name:
-            try:
-                if hasattr(self.manager, "add_category"):
-                    self.manager.add_category(cat_name)
-                elif hasattr(self.manager, "categories"):
-                    if cat_name not in self.manager.categories:
-                        self.manager.categories.append(cat_name)
-            except Exception:
-                pass
-
-            messagebox.showinfo("Success", f"Category '{cat_name}' added successfully.")
-            self.cat_entry.delete(0, tk.END)
-            self.refresh_all_data()
-        else:
-            messagebox.showerror("Error", "Please enter a category name.")
-
-    def set_budget(self):
-        cat = self.b_category_cb.get()
-        limit = self.b_limit_entry.get()
-        if cat and limit:
-            messagebox.showinfo("Budget Set", f"Budget limit of ${limit} set for {cat}.")
-            self.b_limit_entry.delete(0, tk.END)
-            self.b_category_cb.set("")
-        else:
-            messagebox.showerror("Error", "Please fill category and limit.")
-
-    def save_transaction(self):
-        tx_type = self.type_var.get()
-        amount = self.amount_entry.get()
-        date = self.date_entry.get()
-        category = self.category_cb.get()
-        note = self.note_entry.get()
-
-        if not amount or not date or not category:
-            messagebox.showerror("Error", "Please fill all required fields.")
-            return
-
+    def add_category(self) -> None:
         try:
-            float_amount = float(amount)
-        except ValueError:
-            messagebox.showerror("Error", "Amount must be a valid number.")
+            self.manager.add_category(self.cat_entry.get().strip())
+        except FinanceError as error:
+            messagebox.showerror("Error", str(error))
             return
-
-        try:
-            self.manager.add_transaction(tx_type, category, float_amount, date, note)
-        except TypeError:
-            try:
-                self.manager.add_transaction(amount=float_amount, category=category, date=date, transaction_type=tx_type, note=note)
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to save: {str(e)}")
-                return
-
-        messagebox.showinfo("Success", "Transaction saved successfully.")
-
-        self.amount_entry.delete(0, tk.END)
-        self.date_entry.delete(0, tk.END)
-        self.category_cb.set("")
-        self.note_entry.delete(0, tk.END)
-
+        self.cat_entry.delete(0, tk.END)
         self.refresh_all_data()
 
-    def refresh_all_data(self):
+    def set_budget(self) -> None:
+        month = datetime.date.today().strftime("%Y-%m")
+        try:
+            self.manager.add_budget(self.b_category_cb.get(), self.b_limit_entry.get(), month)
+        except FinanceError as error:
+            messagebox.showerror("Error", str(error))
+            return
+        messagebox.showinfo("Budget Set", f"Budget saved for {month}.")
+        self.b_limit_entry.delete(0, tk.END)
+        self.b_category_cb.set("")
+        self.refresh_all_data()
+
+    def save_transaction(self) -> None:
+        try:
+            self.manager.add_transaction(
+                self.type_var.get(),
+                self.amount_entry.get(),
+                self.date_entry.get(),
+                self.category_cb.get(),
+                self.note_entry.get()
+            )
+        except FinanceError as error:
+            messagebox.showerror("Error", str(error))
+            return
+
+        messagebox.showinfo("Success", "Transaction saved successfully.")
+        self.amount_entry.delete(0, tk.END)
+        self.date_entry.delete(0, tk.END)
+        self.date_entry.insert(0, datetime.date.today().isoformat())
+        self.category_cb.set("")
+        self.note_entry.delete(0, tk.END)
+        self.refresh_all_data()
+
+    def apply_filters(self) -> None:
+        tx_type = None if self.filter_type.get() in ("", "All") else self.filter_type.get()
+        category = None if self.filter_cat.get() in ("", "All") else self.filter_cat.get()
+        results = self.manager.filter(category=category, tx_type=tx_type)
+        text = self.search_entry.get().strip()
+        if text:
+            matching_ids = {tx.id for tx in self.manager.search(text)}
+            results = [tx for tx in results if tx.id in matching_ids]
+        self._fill_table(results)
+
+    def clear_filters(self) -> None:
+        self.search_entry.delete(0, tk.END)
+        self.filter_type.set("All")
+        self.filter_cat.set("All")
+        self.refresh_all_data()
+
+    def delete_selected(self) -> None:
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showerror("Error", "Select a row first.")
+            return
+        tx_id = int(self.tree.item(selected[0])["values"][0])
+        if not messagebox.askyesno("Confirm", f"Delete transaction {tx_id}?"):
+            return
+        try:
+            self.manager.delete_transaction(tx_id)
+        except FinanceError as error:
+            messagebox.showerror("Error", str(error))
+            return
+        self.refresh_all_data()
+
+    def refresh_all_data(self) -> None:
+        transactions = self.manager.get_transactions()
+        self._fill_table(transactions)
+        
+        names = [c.name for c in self.manager.get_categories()]
+        self.category_cb["values"] = names
+        self.b_category_cb["values"] = names
+        self.filter_cat["values"] = ["All"] + names
+        
+        self.cat_listbox.delete(0, tk.END)
+        for name in names:
+            self.cat_listbox.insert(tk.END, name)
+            
+        self._refresh_dashboard(transactions)
+        self._refresh_budgets()
+
+    def _fill_table(self, transactions) -> None:
         for item in self.tree.get_children():
             self.tree.delete(item)
+        for tx in transactions:
+            self.tree.insert("", "end", values=(
+                tx.id, tx.date, tx.label(), tx.category, f"{tx.amount:.2f}", tx.note
+            ))
 
-        try:
-            transactions = self.manager.get_all_transactions()
-        except AttributeError:
-            try:
-                transactions = self.manager.transactions
-            except:
-                transactions = []
+    def _refresh_dashboard(self, transactions) -> None:
+        data = self.manager.dashboard_data()
+        self.lbl_income.config(text=f"Total Income: ${data['total_income']:.2f}")
+        self.lbl_expense.config(text=f"Total Expenses: ${data['total_expenses']:.2f}")
+        self.lbl_balance.config(text=f"Net Balance: ${data['balance']:.2f}")
 
-        if transactions:
-            for tx in transactions:
-                if isinstance(tx, dict):
-                    self.tree.insert("", "end", values=(
-                        tx.get("id", "-"),
-                    tx.get("date", "-"),
-                        tx.get("type", "-"),
-                        tx.get("category", "-"),
-                        f"${tx.get('amount', 0):.2f}",
-                        tx.get("note", "")
-                    ))
-                else:
-                    self.tree.insert("", "end", values=(
-                        getattr(tx, "id", "-"),
-                        getattr(tx, "date", "-"),
-                        getattr(tx, "type", "-"),
-                        getattr(tx, "category", "-"),
-                        f"${getattr(tx, 'amount', 0):.2f}",
-                        getattr(tx, "note", "")
-                    ))
+        spending = {}
+        for tx in transactions:
+            if tx.label() == "Expense":
+                spending[tx.category] = spending.get(tx.category, 0) + tx.amount
 
-        try:
-            categories = []
-            if hasattr(self.manager, "get_categories"):
-                categories = self.manager.get_categories()
-            elif hasattr(self.manager, "categories"):
-                categories = self.manager.categories
-            else:
-                categories = ["Salary", "Food", "Transport", "Rent", "Entertainment"]
+        self.ax1.clear()
+        self.ax2.clear()
 
-            self.category_cb["values"] = categories
-            self.b_category_cb["values"] = categories
+        if spending:
+            self.ax1.pie(spending.values(), labels=spending.keys(), autopct="%1.1f%%", startangle=140)
+        else:
+            self.ax1.text(0.5, 0.5, "No Expense Data", ha="center", va="center")
+        self.ax1.set_title("Expenses by Category")
 
-            self.cat_listbox.delete(0, tk.END)
-            for cat in categories:
-                self.cat_listbox.insert(tk.END, cat)
-        except:
-            pass
+        self.ax2.bar(["Income", "Expense"], [data["total_income"], data["total_expenses"]], color=["green", "red"])
+        self.ax2.set_title("Income vs Expenses")
+        self.ax2.set_ylabel("Amount ($)")
 
-        try:
-            income, expense, balance = self.manager.get_summary()
-            self.lbl_income.config(text=f"Total Income: ${income:.2f}")
-            self.lbl_expense.config(text=f"Total Expenses: ${expense:.2f}")
-            self.lbl_balance.config(text=f"Net Balance: ${balance:.2f}")
+        self.figure.tight_layout()
+        self.canvas.draw()
 
-            self.ax1.clear()
-            self.ax2.clear()
-
-            # Pie Chart (Expenses by Category)
-            expense_categories = {}
-            for tx in transactions:
-                t_type = tx.get("type") if isinstance(tx, dict) else getattr(tx, "type", "")
-                t_cat = tx.get("category") if isinstance(tx, dict) else getattr(tx, "category", "")
-                t_amt = tx.get("amount") if isinstance(tx, dict) else getattr(tx, "amount", 0)
-                if t_type == "Expense":
-                    expense_categories[t_cat] = expense_categories.get(t_cat, 0) + float(t_amt)
-
-            if expense_categories:
-                self.ax1.pie(expense_categories.values(), labels=expense_categories.keys(), autopct='%1.1f%%', startangle=140)
-                self.ax1.set_title("Expenses by Category")
-            else:
-                self.ax1.text(0.5, 0.5, "No Expense Data", horizontalalignment='center', verticalalignment='center')
-                self.ax1.set_title("Expenses by Category")
-
-            # Bar Chart (Income vs Expenses)
-            self.ax2.bar(["Income", "Expense"], [income, expense], color=["green", "red"])
-            self.ax2.set_title("Income vs Expenses")
-            self.ax2.set_ylabel("Amount ($)")
-
-            self.figure.tight_layout()
-            self.canvas.draw()
-        except Exception:
-            pass
+    def _refresh_budgets(self) -> None:
+        for item in self.budget_tree.get_children():
+            self.budget_tree.delete(item)
+        month = datetime.date.today().strftime("%Y-%m")
+        for b in self.manager.budget_status(month):
+            status = "EXCEEDED" if b["exceeded"] else "OK"
+            self.budget_tree.insert("", "end", tags=("over",) if b["exceeded"] else (), values=(
+                b["category"], f"{b['limit']:.2f}", f"{b['spent']:.2f}", f"{b['remaining']:.2f}", status
+            ))
 
 
 if __name__ == "__main__":
