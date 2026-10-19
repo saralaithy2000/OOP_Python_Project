@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "name": "Salary",
+    "kind": "income"
+  },
+  {
+    "id": 2,
+    "name": "Freelance",
+    "kind": "income"
+  },
+  {
+    "id": 3,
+    "name": "Food",
+    "kind": "expense"
+  },
+  {
+    "id": 4,
+    "name": "Transport",
+    "kind": "expense"
+  },
+  {
+    "id": 5,
+    "name": "Rent",
+    "kind": "expense"
+  },
+  {
+    "id": 6,
+    "name": "Entertainment",
+    "kind": "expense"
+  },
+  {
+    "id": 7,
+    "name": "skincare",
+    "kind": "both"
+  }
+]

@@ -1,153 +1,30 @@
+"""Tkinter interface for the Personal Finance Management System.
+
+Start the program with:  python main.py   (main.py loads the data and opens this window)
+"""
+from __future__ import annotations
+
+import datetime
 import os
 import sys
-import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
-import matplotlib
-matplotlib.use("TkAgg")
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-#Hi
-print("Hi")
-try:
-    from exceptions import FinanceError
-    from services.finance_manager import FinanceManager
-    from file_manager.file_manager import FileManager
-    HAS_BACKEND = True
-except ImportError:
-    HAS_BACKEND = False
-    class FinanceError(Exception):
-        pass
-
-class DummyCategory:
-    def __init__(self, name):
-        self.name = name
-
-class DummyTransaction:
-    def __init__(self, id, date, tx_type, category, amount, note):
-        self.id = id
-        self.date = date
-        self.type = tx_type
-        self.category = category
-        self.amount = float(amount)
-        self.note = note
-    def label(self):
-        return self.type
-
-class StandaloneManager:
-    def __init__(self):
-        self.transactions = [
-            DummyTransaction(1, "2026-10-01", "Income", "Salary", 5000.0, "Monthly Salary"),
-            DummyTransaction(2, "2026-10-02", "Expense", "Food", 150.0, "Groceries")
-        ]
-        self.categories = [DummyCategory("Salary"), DummyCategory("Food"), DummyCategory("Transport"), DummyCategory("Rent"), DummyCategory("Entertainment")]
-        self.budgets = {}
-
-    def get_transactions(self):
-        return self.transactions
-
-    def get_categories(self):
-        return self.categories
-
-    def dashboard_data(self):
-        inc = sum(t.amount for t in self.transactions if t.label() == "Income")
-        exp = sum(t.amount for t in self.transactions if t.label() == "Expense")
-        return {
-            "total_income": inc,
-            "total_expenses": exp,
-            "balance": inc - exp
-        }
-
-    def add_transaction(self, tx_type, amount, date, category, note):
-        try:
-            amt = float(amount)
-            if amt <= 0:
-                raise FinanceError("Amount must be greater than zero.")
-        except ValueError:
-            raise FinanceError("Amount must be a valid number.")
-        
-        new_id = len(self.transactions) + 1
-        tx = DummyTransaction(new_id, date, tx_type, category, amt, note)
-        self.transactions.append(tx)
-        return tx
-
-    def add_category(self, name):
-        if not name:
-            raise FinanceError("Category name cannot be empty.")
-        if any(c.name.lower() == name.lower() for c in self.categories):
-            raise FinanceError(f"Category '{name}' already exists.")
-        self.categories.append(DummyCategory(name))
-
-    def add_budget(self, category, limit, month):
-        try:
-            lim = float(limit)
-            if lim < 0:
-                raise FinanceError("Limit cannot be negative.")
-        except ValueError:
-            raise FinanceError("Limit must be a valid number.")
-        self.budgets[(category, month)] = lim
-
-    def budget_status(self, month):
-        statuses = []
-        for cat in self.categories:
-            lim = self.budgets.get((cat.name, month), 0.0)
-            spent = sum(t.amount for t in self.transactions if t.category == cat.name and t.label() == "Expense")
-            statuses.append({
-                "category": cat.name,
-                "limit": lim,
-                "spent": spent,
-                "remaining": lim - spent,
-                "exceeded": spent > lim if lim > 0 else False
-            })
-        return statuses
-
-    def search(self, text):
-        text = text.lower()
-        return [t for t in self.transactions if text in t.note.lower() or text in t.category.lower()]
-
-    def filter(self, category=None, tx_type=None):
-        res = self.transactions
-        if category and category != "All":
-            res = [t for t in res if t.category == category]
-        if tx_type and tx_type != "All":
-            res = [t for t in res if t.label() == tx_type]
-        return res
-
-    def delete_transaction(self, tx_id):
-        self.transactions = [t for t in self.transactions if t.id != tx_id]
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from exceptions import FinanceError  # noqa: E402
+from services.finance_manager import FinanceManager  # noqa: E402
 
 
 class FinanceApp:
-    def __init__(self, root: tk.Tk, manager=None) -> None:
+    def __init__(self, root: tk.Tk, manager: FinanceManager) -> None:
         self.root = root
-<<<<<<< HEAD
-        if manager is not None:
-            self.manager = manager
-=======
-        self.root.title("Personal Finance Management System")
-        self.root.geometry("950x750")
-
-        if HAS_BACKEND:
-            try:
-                self.manager = FinanceManager(FileManager())
-            except Exception:
-                self.manager = FinanceManager(DummyFileManager())
->>>>>>> b11596b9344a1363cf9eee232e893dfd370d4799
-        else:
-            if HAS_BACKEND:
-                try:
-                    self.manager = FinanceManager(FileManager())
-                except Exception:
-                    self.manager = StandaloneManager()
-            else:
-                self.manager = StandaloneManager()
+        self.manager = manager
+        self.editing_id: int | None = None      # ID of the transaction being edited, or None
 
         self.root.title("Personal Finance Management System")
         self.root.geometry("950x750")
@@ -172,11 +49,7 @@ class FinanceApp:
 
         self.refresh_all_data()
 
-<<<<<<< HEAD
     def setup_dashboard_tab(self) -> None:
-=======
-    def setup_dashboard_tab(self):
->>>>>>> b11596b9344a1363cf9eee232e893dfd370d4799
         summary_frame = ttk.LabelFrame(self.tab_dashboard, text="Financial Summary")
         summary_frame.pack(fill="x", padx=15, pady=10)
 
@@ -205,11 +78,14 @@ class FinanceApp:
     def setup_transactions_tab(self) -> None:
         form_frame = ttk.LabelFrame(self.tab_transactions, text="Add New Transaction")
         form_frame.pack(fill="x", padx=10, pady=5)
+        self.form_frame = form_frame
 
         ttk.Label(form_frame, text="Type:").grid(row=0, column=0, padx=5, pady=5)
         self.type_var = tk.StringVar(value="Expense")
-        ttk.Radiobutton(form_frame, text="Income", value="Income", variable=self.type_var).grid(row=0, column=1)
-        ttk.Radiobutton(form_frame, text="Expense", value="Expense", variable=self.type_var).grid(row=0, column=2)
+        self.rb_income = ttk.Radiobutton(form_frame, text="Income", value="Income", variable=self.type_var)
+        self.rb_income.grid(row=0, column=1)
+        self.rb_expense = ttk.Radiobutton(form_frame, text="Expense", value="Expense", variable=self.type_var)
+        self.rb_expense.grid(row=0, column=2)
 
         ttk.Label(form_frame, text="Amount:").grid(row=1, column=0, padx=5, pady=5)
         self.amount_entry = ttk.Entry(form_frame)
@@ -228,8 +104,11 @@ class FinanceApp:
         self.note_entry = ttk.Entry(form_frame)
         self.note_entry.grid(row=4, column=1, columnspan=2, sticky="ew", padx=5)
 
-        btn_save = ttk.Button(form_frame, text="Save Transaction", command=self.save_transaction)
-        btn_save.grid(row=5, column=0, columnspan=3, pady=10)
+        self.btn_save = ttk.Button(form_frame, text="Save Transaction", command=self.save_transaction)
+        self.btn_save.grid(row=5, column=0, columnspan=2, pady=10)
+        self.btn_cancel_edit = ttk.Button(form_frame, text="Cancel Edit", command=self.cancel_edit)
+        self.btn_cancel_edit.grid(row=5, column=2, pady=10)
+        self.btn_cancel_edit.grid_remove()          # only visible while editing
 
         bar = ttk.Frame(self.tab_transactions)
         bar.pack(fill="x", padx=10, pady=2)
@@ -247,6 +126,7 @@ class FinanceApp:
         ttk.Button(bar, text="Apply", command=self.apply_filters).pack(side="left", padx=2)
         ttk.Button(bar, text="Clear", command=self.clear_filters).pack(side="left", padx=2)
         ttk.Button(bar, text="Delete Selected", command=self.delete_selected).pack(side="right")
+        ttk.Button(bar, text="Edit Selected", command=self.edit_selected).pack(side="right", padx=4)
 
         tree_frame = ttk.Frame(self.tab_transactions)
         tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -274,6 +154,8 @@ class FinanceApp:
         btn_set_budget = ttk.Button(frame, text="Set Budget", command=self.set_budget)
         btn_set_budget.grid(row=2, column=0, columnspan=2, pady=10)
 
+        month = datetime.date.today().strftime("%Y-%m")
+        ttk.Label(self.tab_budgets, text=f"Budgets for the current month ({month})").pack(anchor="w", padx=10)
         budget_frame = ttk.Frame(self.tab_budgets)
         budget_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
@@ -284,6 +166,8 @@ class FinanceApp:
             self.budget_tree.column(col, width=110)
         self.budget_tree.tag_configure("over", foreground="red")
         self.budget_tree.pack(fill="both", expand=True)
+
+        ttk.Button(self.tab_budgets, text="Delete Selected Budget", command=self.delete_budget).pack(pady=5)
 
     def setup_categories_tab(self) -> None:
         frame = ttk.LabelFrame(self.tab_categories, text="Manage Categories")
@@ -312,9 +196,23 @@ class FinanceApp:
         self.refresh_all_data()
 
     def set_budget(self) -> None:
+        """Create the budget, or replace it if one already exists for this category and month."""
         month = datetime.date.today().strftime("%Y-%m")
+        category = self.b_category_cb.get()
+        old = next((b for b in self.manager.get_budgets()
+                    if b.category.lower() == category.lower() and b.month == month), None)
+        if old is not None and not messagebox.askyesno(
+                "Replace budget", f"{old.category} already has a budget of {old.limit:.2f} for {month}.\nReplace it?"):
+            return
         try:
-            self.manager.add_budget(self.b_category_cb.get(), self.b_limit_entry.get(), month)
+            if old is not None:
+                self.manager.delete_budget(old.category, month)
+            try:
+                self.manager.add_budget(category, self.b_limit_entry.get(), month)
+            except FinanceError:
+                if old is not None:                      # the new value was invalid: put the old budget back
+                    self.manager.add_budget(old.category, old.limit, old.month)
+                raise
         except FinanceError as error:
             messagebox.showerror("Error", str(error))
             return
@@ -323,26 +221,93 @@ class FinanceApp:
         self.b_category_cb.set("")
         self.refresh_all_data()
 
-    def save_transaction(self) -> None:
+    def delete_budget(self) -> None:
+        selected = self.budget_tree.selection()
+        if not selected:
+            messagebox.showerror("Error", "Select a budget row first.")
+            return
+        category = str(self.budget_tree.item(selected[0])["values"][0])
+        month = datetime.date.today().strftime("%Y-%m")
+        if not messagebox.askyesno("Confirm", f"Delete the {category} budget for {month}?"):
+            return
         try:
-            self.manager.add_transaction(
-                self.type_var.get(),
-                self.amount_entry.get(),
-                self.date_entry.get(),
-                self.category_cb.get(),
-                self.note_entry.get()
-            )
+            self.manager.delete_budget(category, month)
+        except FinanceError as error:
+            messagebox.showerror("Error", str(error))
+            return
+        self.refresh_all_data()
+
+    def save_transaction(self) -> None:
+        """Add a new transaction, or save the changes if one is being edited."""
+        try:
+            if self.editing_id is None:
+                self.manager.add_transaction(
+                    self.type_var.get(),
+                    self.amount_entry.get(),
+                    self.date_entry.get(),
+                    self.category_cb.get(),
+                    self.note_entry.get()
+                )
+                message = "Transaction saved successfully."
+            else:
+                self.manager.update_transaction(
+                    self.editing_id,
+                    amount=self.amount_entry.get(),
+                    date=self.date_entry.get(),
+                    category=self.category_cb.get(),
+                    note=self.note_entry.get()
+                )
+                message = "Transaction updated successfully."
         except FinanceError as error:
             messagebox.showerror("Error", str(error))
             return
 
-        messagebox.showinfo("Success", "Transaction saved successfully.")
+        messagebox.showinfo("Success", message)
+        self._reset_form()
+        self.refresh_all_data()
+
+    def edit_selected(self) -> None:
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showerror("Error", "Select a row first.")
+            return
+        tx_id = int(self.tree.item(selected[0])["values"][0])
+        tx = next((t for t in self.manager.get_transactions() if t.id == tx_id), None)
+        if tx is None:
+            messagebox.showerror("Error", f"Transaction {tx_id} no longer exists.")
+            return
+        self.editing_id = tx_id
+        self.type_var.set(tx.label())
+        self.rb_income.state(["disabled"])              # the type of a transaction cannot be changed
+        self.rb_expense.state(["disabled"])
+        self.amount_entry.delete(0, tk.END)
+        self.amount_entry.insert(0, str(tx.amount))
+        self.date_entry.delete(0, tk.END)
+        self.date_entry.insert(0, tx.date)
+        self.category_cb.set(tx.category)
+        self.note_entry.delete(0, tk.END)
+        self.note_entry.insert(0, tx.note)
+        self.form_frame.config(text=f"Edit Transaction {tx_id}")
+        self.btn_save.config(text="Update Transaction")
+        self.btn_cancel_edit.grid()
+        self.amount_entry.focus_set()
+
+    def cancel_edit(self) -> None:
+        self._reset_form()
+
+    def _reset_form(self) -> None:
+        """Clear the form and go back to 'add new transaction' mode."""
+        self.editing_id = None
+        self.rb_income.state(["!disabled"])
+        self.rb_expense.state(["!disabled"])
         self.amount_entry.delete(0, tk.END)
         self.date_entry.delete(0, tk.END)
         self.date_entry.insert(0, datetime.date.today().isoformat())
         self.category_cb.set("")
         self.note_entry.delete(0, tk.END)
-        self.refresh_all_data()
+        self.form_frame.config(text="Add New Transaction")
+        self.btn_save.config(text="Save Transaction")
+        self.btn_cancel_edit.grid_remove()
 
     def apply_filters(self) -> None:
         tx_type = None if self.filter_type.get() in ("", "All") else self.filter_type.get()
@@ -373,6 +338,8 @@ class FinanceApp:
         except FinanceError as error:
             messagebox.showerror("Error", str(error))
             return
+        if self.editing_id == tx_id:
+            self._reset_form()
         self.refresh_all_data()
 
     def refresh_all_data(self) -> None:
@@ -405,33 +372,10 @@ class FinanceApp:
         self.lbl_expense.config(text=f"Total Expenses: ${data['total_expenses']:.2f}")
         self.lbl_balance.config(text=f"Net Balance: ${data['balance']:.2f}")
 
-<<<<<<< HEAD
         spending = {}
         for tx in transactions:
             if tx.label() == "Expense":
                 spending[tx.category] = spending.get(tx.category, 0) + tx.amount
-=======
-        if transactions:
-            for tx in transactions:
-                if isinstance(tx, dict):
-                    self.tree.insert("", "end", values=(
-                        tx.get("id", "-"),
-                    tx.get("date", "-"),
-                        tx.get("type", "-"),
-                        tx.get("category", "-"),
-                        f"${tx.get('amount', 0):.2f}",
-                        tx.get("note", "")
-                    ))
-                else:
-                    self.tree.insert("", "end", values=(
-                        getattr(tx, "id", "-"),
-                        getattr(tx, "date", "-"),
-                        getattr(tx, "type", "-"),
-                        getattr(tx, "category", "-"),
-                        f"${getattr(tx, 'amount', 0):.2f}",
-                        getattr(tx, "note", "")
-                    ))
->>>>>>> b11596b9344a1363cf9eee232e893dfd370d4799
 
         self.ax1.clear()
         self.ax2.clear()
@@ -446,7 +390,6 @@ class FinanceApp:
         self.ax2.set_title("Income vs Expenses")
         self.ax2.set_ylabel("Amount ($)")
 
-<<<<<<< HEAD
         self.figure.tight_layout()
         self.canvas.draw()
 
@@ -459,45 +402,8 @@ class FinanceApp:
             self.budget_tree.insert("", "end", tags=("over",) if b["exceeded"] else (), values=(
                 b["category"], f"{b['limit']:.2f}", f"{b['spent']:.2f}", f"{b['remaining']:.2f}", status
             ))
-=======
-        try:
-            income, expense, balance = self.manager.get_summary()
-            self.lbl_income.config(text=f"Total Income: ${income:.2f}")
-            self.lbl_expense.config(text=f"Total Expenses: ${expense:.2f}")
-            self.lbl_balance.config(text=f"Net Balance: ${balance:.2f}")
-
-            self.ax1.clear()
-            self.ax2.clear()
-
-            # Pie Chart (Expenses by Category)
-            expense_categories = {}
-            for tx in transactions:
-                t_type = tx.get("type") if isinstance(tx, dict) else getattr(tx, "type", "")
-                t_cat = tx.get("category") if isinstance(tx, dict) else getattr(tx, "category", "")
-                t_amt = tx.get("amount") if isinstance(tx, dict) else getattr(tx, "amount", 0)
-                if t_type == "Expense":
-                    expense_categories[t_cat] = expense_categories.get(t_cat, 0) + float(t_amt)
-
-            if expense_categories:
-                self.ax1.pie(expense_categories.values(), labels=expense_categories.keys(), autopct='%1.1f%%', startangle=140)
-                self.ax1.set_title("Expenses by Category")
-            else:
-                self.ax1.text(0.5, 0.5, "No Expense Data", horizontalalignment='center', verticalalignment='center')
-                self.ax1.set_title("Expenses by Category")
-
-            # Bar Chart (Income vs Expenses)
-            self.ax2.bar(["Income", "Expense"], [income, expense], color=["green", "red"])
-            self.ax2.set_title("Income vs Expenses")
-            self.ax2.set_ylabel("Amount ($)")
-
-            self.figure.tight_layout()
-            self.canvas.draw()
-        except Exception:
-            pass
->>>>>>> b11596b9344a1363cf9eee232e893dfd370d4799
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = FinanceApp(root)
-    root.mainloop()
+    from main import main      # same start-up (with error boxes) as python main.py
+    main()
